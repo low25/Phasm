@@ -10,6 +10,7 @@ if [[ -z "${APP_VERSION:-}" && -f "$VERSION_FILE" ]]; then
     APP_VERSION="$(<"$VERSION_FILE")"
 fi
 APP_VERSION="${APP_VERSION:-1.2.0}"
+APPIMAGE_ARCH="${ARCH:-x86_64}"
 if [[ -n "${APPIMAGETOOL:-}" ]]; then
     : # Respect an explicitly selected builder.
 elif command -v appimagetool >/dev/null 2>&1; then
@@ -77,6 +78,6 @@ rsvg-convert -w 256 -h 256 "$PROJECT_DIR/assets/icon.svg" \
 cp "$APPDIR/usr/share/icons/hicolor/256x256/apps/Phasm.png" "$APPDIR/Phasm.png"
 chmod +x "$APPDIR/AppRun"
 
-"$APPIMAGETOOL" "${APPIMAGETOOL_ARGS[@]}" "$APPDIR" "$OUTPUT"
+ARCH="$APPIMAGE_ARCH" "$APPIMAGETOOL" "${APPIMAGETOOL_ARGS[@]}" "$APPDIR" "$OUTPUT"
 chmod +x "$OUTPUT"
 printf 'Created %s\n' "$OUTPUT"
