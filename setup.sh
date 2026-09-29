@@ -146,7 +146,11 @@ build_appimage() {
         die "rsvg-convert is required. Install librsvg, then rerun ./setup.sh --no-deps"
     fi
     ensure_appimage_tools
-    bash "$SCRIPT_DIR/packaging/build-appimage.sh"
+    info "Compiling Python source"
+    "$VENV_PYTHON" -m compileall -q core ui main.py
+    success "Python compilation passed"
+    info "Running Phasm AppImage builder"
+    "$VENV_PYTHON" "$SCRIPT_DIR/main.py" --buildapp
     [[ -x "$SCRIPT_DIR/Phasm-x86_64.AppImage" ]] || die "AppImage build did not produce Phasm-x86_64.AppImage"
     success "Created $SCRIPT_DIR/Phasm-x86_64.AppImage"
 }
