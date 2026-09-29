@@ -70,13 +70,14 @@ chmod +x setup.sh
 The setup wizard:
 
 1. Checks for Python 3.10 or newer.
-2. Creates `.venv`.
-3. Installs `PySide6` and `requests`, then attempts optional `evdev` controller support.
-4. Creates empty cache and emulator directories.
-5. Creates local configuration from the safe `config/*.example` files when needed.
-6. Optionally downloads emulator AppImages from URLs you explicitly provide.
-7. Runs the initialization check.
-8. Builds `Phasm-x86_64.AppImage` as the final step.
+2. On Arch Linux, installs the common Qt/XCB/Wayland runtime libraries required by PySide6.
+3. Creates `.venv`.
+4. Installs `PySide6` and `requests`, then attempts optional `evdev` controller support.
+5. Creates empty cache and emulator directories.
+6. Creates local configuration from the safe `config/*.example` files when needed.
+7. Optionally downloads emulator AppImages from URLs you explicitly provide.
+8. Runs the initialization check.
+9. Builds `Phasm-x86_64.AppImage` as the final step.
 
 It does not download games, BIOS files, firmware, keys, or emulator binaries by default. This keeps the public repository small and avoids silently downloading software from an unverified source.
 
@@ -90,6 +91,8 @@ PHASM_PS4_URL="https://trusted.example/shadps4.AppImage" \
 ```
 
 The URL examples above are placeholders. Replace them with official release URLs you have verified. Switch uses the configured Ryujinx Flatpak command and is not downloaded by this script.
+
+On Arch Linux, the wizard also offers the Qt runtime packages needed by the graphical AppImage, including `xcb-util-cursor`, `xcb-util-renderutil`, `libxkbcommon-x11`, and `qt6-wayland`. The `xcb-util-cursor` package provides `libxcb-cursor.so.0`, which is required by Qt’s XCB platform plugin. [Arch package file list](https://archlinux.org/packages/extra/x86_64/xcb-util-cursor/files/)
 
 Run `./setup.sh --help` to see all options. Use `--no-deps` when Python dependencies are already installed, `--no-appimage` when you only want to prepare the checkout, and `--non-interactive` for automation. If `appimagetool` or the AppImage runtime is missing, the wizard downloads the official x86_64 tools into the ignored `.tools/` directory automatically.
 

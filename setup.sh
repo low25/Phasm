@@ -115,6 +115,40 @@ create_config_from_example() {
     fi
 }
 
+ensure_qt_runtime() {
+    local packages=(
+        libxcb
+        xcb-util-cursor
+        xcb-util-image
+        xcb-util-keysyms
+        xcb-util-renderutil
+        xcb-util-wm
+        libxkbcommon
+        libxkbcommon-x11
+        qt6-wayland
+        libglvnd
+        mesa
+        fontconfig
+        freetype2
+    )
+
+    if ! command -v pacman >/dev/null 2>&1; then
+        info "Non-Arch system detected; install Qt X11/Wayland runtime packages through your distribution"
+        return 0
+    fi
+
+    if (( EUID == 0 )); then
+        pacman -S --needed "${packages[@]}"
+    elif command -v sudo >/dev/null 2>&1; then
+        sudo pacman -S --needed "${packages[@]}"
+    else
+        warn "pacman is available but sudo is not; run this manually as root:"
+        printf '    pacman -S --needed %s\n' "${packages[*]}"
+        return 0
+    fi
+    success "Qt Linux runtime libraries are ready"
+}
+
 download_emulator() {
     local platform="$1"
     local filename="$2"
@@ -223,6 +257,7 @@ if (( PYTHON_MAJOR < 3 || (PYTHON_MAJOR == 3 && PYTHON_MINOR < 10) )); then
 fi
 success "Python $PYTHON_VERSION detected"
 info "Linux desktop environment detected; AppImage output will be standalone"
+ensure_qt_runtime
 pause_for_user
 
 step "2/6" "Preparing Phasm folders and local configuration"
