@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+APPDIR="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+PROJECT_DIR="$APPDIR/usr/share/phasm"
+export PHASM_APPIMAGE=1
+# Request the discrete NVIDIA renderer for this process when the driver and
+# PRIME offload are installed. This is intentionally scoped to the AppImage.
+export __NV_PRIME_RENDER_OFFLOAD="${__NV_PRIME_RENDER_OFFLOAD:-1}"
+export __NV_PRIME_RENDER_OFFLOAD_PROVIDER="${__NV_PRIME_RENDER_OFFLOAD_PROVIDER:-NVIDIA-G0}"
+export __GLX_VENDOR_LIBRARY_NAME="${__GLX_VENDOR_LIBRARY_NAME:-nvidia}"
+export __VK_LAYER_NV_optimus="${__VK_LAYER_NV_optimus:-NVIDIA_only}"
+export DRI_PRIME="${DRI_PRIME:-1}"
+cd "$PROJECT_DIR"
+
+exec "${PYTHON_BIN:-python3}" "$PROJECT_DIR/main.py" "$@"

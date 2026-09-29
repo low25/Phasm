@@ -1,0 +1,20 @@
+{
+    "emulators": {
+        "PS2": {
+            "command": "emulators/pcsx2-v2.8.2-linux-appimage-x64-Qt.AppImage",
+            "arguments": ["{game}"]
+        },
+        "PS3": {
+            "command": "emulators/rpcs3-v0.0.42-20067-dad97b9a_linux64.AppImage",
+            "arguments": ["{game}"]
+        },
+        "PS4": {
+            "command": "emulators/Shadps4-qt.AppImage",
+            "arguments": ["-g", "{game}"]
+        },
+        "Switch": {
+            "command": "flatpak",
+            "arguments": ["run", "io.github.ryubing.Ryujinx", "{game}"]
+        }
+    }
+}

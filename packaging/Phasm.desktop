@@ -1,0 +1,14 @@
+[Desktop Entry]
+Name=Phasm
+Comment=Game library and emulator launcher for managing and launching games
+X-AppImage-Name=Phasm
+X-AppImage-Version=1.14.4
+X-AppImage-Description=Game library and emulator launcher for managing and launching games
+Exec=Phasm %U
+Icon=Phasm
+Terminal=false
+Type=Application
+Categories=Game;
+StartupWMClass=Phasm
+X-GNOME-WMClass=Phasm
+StartupNotify=true

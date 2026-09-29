@@ -1,0 +1,31 @@
+{
+    "steamgriddb": {
+        "enabled": false,
+        "api_key": ""
+    },
+    "rawg": {
+        "enabled": false,
+        "api_key": ""
+    },
+    "sound": {
+        "enabled": true,
+        "volume": 80,
+        "effects": {
+            "enabled": true,
+            "volume": 80
+        },
+        "music": {
+            "enabled": true,
+            "volume": 60
+        }
+    },
+    "fullscreen": true,
+    "minimize_on_launch": false,
+    "show_empty_platforms": false,
+    "hero_orientation": "vertical",
+    "hero_width": 360,
+    "hero_height": 260,
+    "accent": "Violet",
+    "background_mode": "hero_full",
+    "custom_cursor": true
+}
