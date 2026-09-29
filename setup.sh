@@ -126,6 +126,8 @@ ensure_qt_runtime() {
         libxkbcommon
         libxkbcommon-x11
         qt6-wayland
+        qt6-multimedia
+        pyside6
         libglvnd
         mesa
         fontconfig

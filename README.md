@@ -92,7 +92,7 @@ PHASM_PS4_URL="https://trusted.example/shadps4.AppImage" \
 
 The URL examples above are placeholders. Replace them with official release URLs you have verified. Switch uses the configured Ryujinx Flatpak command and is not downloaded by this script.
 
-On Arch Linux, the wizard also offers the Qt runtime packages needed by the graphical AppImage, including `xcb-util-cursor`, `xcb-util-renderutil`, `libxkbcommon-x11`, and `qt6-wayland`. The `xcb-util-cursor` package provides `libxcb-cursor.so.0`, which is required by Qt’s XCB platform plugin. [Arch package file list](https://archlinux.org/packages/extra/x86_64/xcb-util-cursor/files/)
+On Arch Linux, the wizard also offers the Qt runtime packages needed by the graphical AppImage, including `xcb-util-cursor`, `xcb-util-renderutil`, `libxkbcommon-x11`, `qt6-wayland`, `qt6-multimedia`, and `pyside6`. The `xcb-util-cursor` package provides `libxcb-cursor.so.0`, which is required by Qt’s XCB platform plugin. [Arch package file list](https://archlinux.org/packages/extra/x86_64/xcb-util-cursor/files/)
 
 Run `./setup.sh --help` to see all options. Use `--no-deps` when Python dependencies are already installed, `--no-appimage` when you only want to prepare the checkout, and `--non-interactive` for automation. If `appimagetool` or the AppImage runtime is missing, the wizard downloads the official x86_64 tools into the ignored `.tools/` directory automatically.
 
