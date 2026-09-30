@@ -6,6 +6,43 @@ from core.assets import fetch_cover, fetch_hero, fetch_logo
 from core.config import config
 from core.userdata import is_favorite
 
+_LOCAL_METADATA = None
+
+
+def _metadata_index():
+    """Load the local metadata index once per process."""
+    global _LOCAL_METADATA
+    if _LOCAL_METADATA is None:
+        path = config.cache_dir / "metadata" / "games.json"
+        try:
+            value = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+            _LOCAL_METADATA = value if isinstance(value, dict) else {}
+        except (OSError, json.JSONDecodeError):
+            _LOCAL_METADATA = {}
+    return _LOCAL_METADATA
+
+
+def save_metadata_cache():
+    """Persist the in-memory metadata index once after a scan."""
+    path = config.cache_dir / "metadata" / "games.json"
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(_metadata_index(), indent=2), encoding="utf-8")
+    except (OSError, TypeError):
+        pass
+
+
+def cached_game(game_dict):
+    key = f"{game_dict.get('platform', '')}::{game_dict.get('path', '')}"
+    cached = _metadata_index().get(key)
+    if not isinstance(cached, dict):
+        return None
+    result = dict(game_dict)
+    result.update(cached)
+    result["key"] = key
+    result["is_favorite"] = is_favorite(key)
+    return result
+
 def enrich_game(game_dict: dict) -> dict:
     title = game_dict.get("title", "")
     platform = game_dict.get("platform", "")
@@ -13,6 +50,10 @@ def enrich_game(game_dict: dict) -> dict:
     # Generate unique key
     path = game_dict.get("path", "")
     game_key = f"{platform}::{path}"
+
+    cached = cached_game(game_dict)
+    if cached is not None:
+        return cached
     
     try:
         cover_path = fetch_cover(title, platform)
@@ -50,21 +91,20 @@ def enrich_game(game_dict: dict) -> dict:
         "screenshots": rawg.get("screenshots", []) if rawg else [],
         "is_favorite": is_favorite(game_key)
     })
-    _save_local_metadata(enriched)
+    _save_local_metadata(enriched, persist=False)
     
     return enriched
 
-def _save_local_metadata(game):
-    path = config.cache_dir / "metadata" / "games.json"
+def _save_local_metadata(game, persist=True):
     try:
-        existing = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
-        existing[game.get("key", "")] = {
+        record = {
             key: game.get(key, "") for key in
-            ("title", "platform", "description", "year", "developer", "cover_path", "hero_path", "logo_path", "icon_path", "screenshots")
+            ("title", "platform", "path", "type", "description", "year", "developer", "cover_path", "hero_path", "logo_path", "icon_path", "screenshots")
         }
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
-    except Exception:
+        _metadata_index()[game.get("key", "")] = record
+        if persist:
+            save_metadata_cache()
+    except (OSError, TypeError):
         pass
 
 

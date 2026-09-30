@@ -1,5 +1,5 @@
 from PySide6.QtWidgets import QWidget
-from PySide6.QtCore import Qt, Signal, QPropertyAnimation, QVariantAnimation, QRect, QEasingCurve, QPointF
+from PySide6.QtCore import Qt, Signal, QPropertyAnimation, QVariantAnimation, QRect, QSize, QEasingCurve, QPointF
 from PySide6.QtGui import QPixmap, QPainter, QColor, QLinearGradient, QRadialGradient, QFont, QPainterPath, QPen
 import time
 import math
@@ -9,26 +9,22 @@ from core.library import game_is_installed
 from core.config import config
 from ui.theme import get_theme_colors
 from core.artwork_color import dominant_accent
+from core.badges import badge_pixmap
 
-# Per-platform badge config: (label, gradient_start, gradient_end, text_color)
+# Per-platform badge config: (label, background_start, background_end, text_color)
 PLATFORM_BADGE_CFG = {
-    "PC": ("PC", "#ffffff", "#ffffff", "#17456b"),
-    "PS2": ("PS2", "#001a5e", "#0050d0", "#dbeafe"),
-    "PS3": ("PS3", "#001060", "#003fc7", "#dbeafe"),
-    "PS4": ("PS4", "#00185a", "#0044bb", "#dbeafe"),
-    "Switch": ("SWITCH", "#6b0000", "#cc0010", "#000000"),
+    "PC": ("PC", "#ffffff", "#ffffff", "#111827"),
+    "PS1": ("PS1", "#ffffff", "#ffffff", "#111827"),
+    "PS2": ("PS2", "#ffffff", "#ffffff", "#111827"),
+    "PS3": ("PS3", "#ffffff", "#ffffff", "#111827"),
+    "PS4": ("PS4", "#ffffff", "#ffffff", "#111827"),
+    "Switch": ("SWITCH", "#ffffff", "#ffffff", "#111827"),
 }
 PLATFORM_BADGE_ICONS = {
     "PC": "▣",
+    "PS1": "◈",
     "PS2": "◈", "PS3": "◈", "PS4": "◈", "Switch": "◇"
 }
-PLATFORM_BADGE_LOGOS = {
-    "PC": QPixmap(str(config.project_root / "assets" / "UI" / "pc_badge.svg")),
-    "PS2": QPixmap(str(config.project_root / "assets" / "Emus" / "ps2-logo.png")),
-    "PS3": QPixmap(str(config.project_root / "assets" / "Emus" / "ps3-logo.png")),
-    "Switch": QPixmap(str(config.project_root / "assets" / "Emus" / "switch-logo.png")),
-}
-
 # Fallback solid color for unknown platforms
 PLATFORM_COLORS = {
     "PC": "#1b75bb",
@@ -360,7 +356,7 @@ class GameCard(QWidget):
         platform = self.game_dict.get("platform", "")
         p_color = QColor(PLATFORM_COLORS.get(platform, "#1e1e2e"))
         badge_label, badge_start, badge_end, badge_text_color = PLATFORM_BADGE_CFG.get(
-            platform, (platform.upper() or "GAME", "#27223d", "#514078", "#eee8ff")
+            platform, (platform.upper() or "GAME", "#ffffff", "#ffffff", "#111827")
         )
         badge_icon = PLATFORM_BADGE_ICONS.get(platform, "✦")
 
@@ -411,27 +407,19 @@ class GameCard(QWidget):
         painter.setClipping(False)
         badge_font = QFont("Segoe UI", 8, QFont.Bold)
         painter.setFont(badge_font)
-        badge_logo = PLATFORM_BADGE_LOGOS.get(platform)
+        badge_logo = badge_pixmap(platform, QSize(24, 24))
         badge = QRect(10, 10, 34, 34)
         badge_grad = QLinearGradient(badge.topLeft(), badge.bottomRight())
-        if platform == "PC":
-            badge_grad.setColorAt(0.00, QColor(badge_start))
-            badge_grad.setColorAt(1.00, QColor(badge_start))
-        elif platform == "Switch":
-            badge_grad.setColorAt(0.00, QColor("#ffffff"))
-            badge_grad.setColorAt(1.00, QColor("#ffffff"))
-        else:
-            badge_grad.setColorAt(0, QColor(badge_start))
-            badge_grad.setColorAt(1, QColor(badge_end))
+        badge_grad.setColorAt(0, QColor("#ffffff"))
+        badge_grad.setColorAt(1, QColor("#ffffff"))
         painter.setBrush(badge_grad)
         painter.setPen(QPen(QColor(255, 255, 255, 90), 1))
         painter.drawEllipse(badge)
         painter.setPen(QColor(badge_text_color))
         painter.setFont(QFont("Segoe UI", 8, QFont.Bold))
         if badge_logo and not badge_logo.isNull():
-            logo = badge_logo.scaled(24, 24, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-            painter.drawPixmap(badge.x() + (badge.width() - logo.width()) // 2,
-                               badge.y() + (badge.height() - logo.height()) // 2, logo)
+            painter.drawPixmap(badge.x() + (badge.width() - badge_logo.width()) // 2,
+                               badge.y() + (badge.height() - badge_logo.height()) // 2, badge_logo)
         else:
             painter.drawText(badge, Qt.AlignCenter, badge_icon)
         

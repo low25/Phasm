@@ -2,7 +2,7 @@
 
 Phasm is a Linux game-library application for organizing and launching games from emulators and PC game launchers in one place.
 
-It can scan PS2, PS3, PS4, and Switch game folders, import owned Steam games, display covers and metadata, track favorites and playtime, organize custom collections, and launch each game with the emulator configured for its platform.
+It can scan PS1, PS2, PS3, PS4, and Switch game folders, import owned Steam games, display covers and metadata, track favorites and playtime, organize custom collections, and launch each game with the emulator configured for its platform.
 
 ![Phasm home screen](docs/screenshots/home.png)
 
@@ -95,6 +95,8 @@ The URL examples above are placeholders. Replace them with official release URLs
 On Arch Linux, the wizard also offers the Qt runtime packages needed by the graphical AppImage, including `xcb-util-cursor`, `xcb-util-renderutil`, `libxkbcommon-x11`, `qt6-wayland`, `qt6-multimedia`, and `pyside6`. The `xcb-util-cursor` package provides `libxcb-cursor.so.0`, which is required by Qt’s XCB platform plugin. [Arch package file list](https://archlinux.org/packages/extra/x86_64/xcb-util-cursor/files/)
 
 Run `./setup.sh --help` to see all options. Use `--no-deps` when Python dependencies are already installed, `--no-appimage` when you only want to prepare the checkout, and `--non-interactive` for automation. If `appimagetool` or the AppImage runtime is missing, the wizard downloads the official x86_64 tools into the ignored `.tools/` directory automatically.
+
+On KDE, setup permanently installs a Dolphin context-menu action named **Extract here** for ZIP, 7z, and RAR archives. Archives are extracted into a same-name folder beside the archive. Setup also permanently configures Dolphin's built-in **Open Terminal Here** action to use Alacritty and refreshes KDE's service cache so its Alacritty icon appears. Extraction uses `7z`/`7zz` when available, with `unzip` and `unrar` as fallbacks.
 
 ### Option A: Run from the source folder
 
@@ -209,6 +211,7 @@ Recommended example:
 
 ```text
 Games/
+├── PS1Games/
 ├── PS2/
 ├── PS3/
 ├── PS4/
@@ -216,6 +219,18 @@ Games/
 ```
 
 You can also use folders on another drive, for example `/mnt/games/PS2/`.
+
+PS1 games use one folder per game inside the configured PS1Games folder:
+
+```text
+PS1Games/
+└── Game Name/
+    ├── game.cue
+    └── game.bin
+```
+
+PS1 `.chd` files can be stored directly in `PS1Games/` or inside a game
+subfolder.
 
 ![Game Library screen](docs/screenshots/library-setup.png)
 
@@ -226,6 +241,7 @@ You can also use folders on another drive, for example `/mnt/games/PS2/`.
 Phasm walks each configured folder and checks files according to the platform rules:
 
 - PS2 image files become PS2 game entries. When both `.mdf` and `.mds` exist, Phasm uses the `.mds` file as the launch target.
+- PS1 CUE/BIN files become PS1 entries when they are inside a game folder directly below the configured PS1Games folder. PS1 CHD files work directly in PS1Games or inside those subfolders. CUE is preferred when multiple formats are present.
 - PS3 ISO files and extracted folders with `PS3_DISC.SFB` become PS3 entries.
 - PS4 PKG files and extracted folders with `EBOOT.BIN` become PS4 entries.
 - Switch NSP, XCI, and NSZ files become Switch entries.
@@ -241,10 +257,12 @@ Phasm scans and displays games, but the emulator itself must already be installe
 
 1. Open **Settings**.
 2. Select the **Library** tab.
-3. Find the emulator field for PS2, PS3, PS4, or Switch.
+3. Find the emulator field for PS1, PS2, PS3, PS4, or Switch.
 4. Enter the executable path or use the folder/file browse button.
 5. Confirm that the selected file is executable.
 6. Close Settings or allow the automatic save to complete.
+
+Settings also includes **Badge Icons** fields where you can enter or browse to a custom image for each platform badge. Leave a field empty to use Phasm's built-in logo.
 
 ![Emulator settings](docs/screenshots/emulator-settings.png)
 
@@ -256,6 +274,7 @@ The bundled configuration uses these defaults:
 
 | Platform | Default command |
 | --- | --- |
+| PS1 | Configure your PS1 emulator path in Settings |
 | PS2 | `emulators/pcsx2-v2.8.2-linux-appimage-x64-Qt.AppImage` |
 | PS3 | `emulators/rpcs3-v0.0.42-20067-dad97b9a_linux64.AppImage` |
 | PS4 | `emulators/Shadps4-qt.AppImage` |
@@ -286,19 +305,19 @@ If a game is missing, check the file extension and folder layout against [the su
 
 The Home screen is the main place to use Phasm:
 
-- **Platform tabs:** Switch between PS2, PS3, PS4, Switch, and PC libraries.
+- **Collections:** Home is the only automatic top-level menu. All other top-level menus are user-created collections and can be reordered.
 - **Game cards:** Show the game title, platform, artwork, and installed state where applicable.
 - **Hero panel:** Shows details and artwork for the selected title.
 - **Play action:** Starts the selected game.
 - **Favorite action:** Adds or removes the title from Favorites.
-- **Collections:** Opens custom groups created by you.
+- **Collections:** Opens custom groups created by you; these are the only menus besides Home.
 - **Recently played:** Shows games launched most recently.
 - **Search:** Finds games by title and filters by platform.
 - **Settings:** Changes library, emulator, appearance, audio, and metadata options.
 
 ![Home screen](docs/screenshots/home.png)
 
-> **Screenshot placeholder:** Show the Home screen with a selected game and visible platform tabs.
+> **Screenshot placeholder:** Show the Home screen with a selected game and visible manual collection tabs.
 
 ## 9. Launch your first game
 
@@ -407,7 +426,7 @@ Moving a game to one collection removes it from other collections. Deleting a co
 
 1. Open **Search**.
 2. Enter a title.
-3. Select **ALL**, **PC**, **PS2**, **PS3**, **PS4**, or **SWITCH**.
+3. Select **ALL**, **PC**, **PS1**, **PS2**, **PS3**, **PS4**, or **SWITCH**.
 4. Select a result to open its actions.
 
 ![Search screen](docs/screenshots/search.png)
@@ -491,7 +510,7 @@ APPIMAGETOOL=/path/to/appimagetool-x86_64.AppImage ./Phasm.sh --buildapp
 
 You can also override the download sources for the setup wizard with `APPIMAGETOOL_URL` and `APPIMAGE_RUNTIME_URL`.
 
-The build only creates the AppImage. It does not require Gear Lever, Flatpak, or any specific desktop-menu integration tool. Users can launch the AppImage directly or integrate it with their preferred desktop utility.
+The build always creates the AppImage. If Gear Lever is installed, the build asks whether it should move Phasm into Gear Lever and add it to the desktop app menu. If Gear Lever is unavailable, the build finishes after creating the standalone AppImage.
 
 ![AppImage build](docs/screenshots/appimage-integration.png)
 

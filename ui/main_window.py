@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import (QMainWindow, QStackedWidget, QApplication, QMessageBox,
+from PySide6.QtWidgets import (QMainWindow, QStackedWidget, QApplication,
                                QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
                                QGraphicsOpacityEffect,
                                )
@@ -21,10 +21,12 @@ from ui.account_view import AccountView
 from ui.quit_dialog import QuitDialog
 from ui.theme import get_stylesheet
 from ui.theme import get_theme_colors
+from ui.phasm_dialog import show_message
 from core.config import config
 from core.launcher import EmulatorLauncher
 from core.session import GameSession
 from core import userdata
+from ui.sound_manager import sound_manager
 from pathlib import Path
 
 
@@ -286,6 +288,8 @@ class _GlobalFilter(QObject):
             custom_modal = self.window.home._in_app_context_menu
         elif getattr(self.window.home, "_collection_name_dialog", None) is not None and self.window.home._collection_name_dialog.isVisible():
             custom_modal = self.window.home._collection_name_dialog
+        elif getattr(self.window.home, "artwork_change_lock", None) is not None and self.window.home.artwork_change_lock.isVisible():
+            custom_modal = self.window.home.artwork_change_lock
         elif getattr(self.window.home, "_artwork_dialog", None) is not None and self.window.home._artwork_dialog.isVisible():
             custom_modal = self.window.home._artwork_dialog
         elif getattr(self.window.settings_view, "_color_dialog", None) is not None and self.window.settings_view._color_dialog.isVisible():
@@ -614,6 +618,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self._controller_input_mode = False
+        self.apply_scale(config.settings.get("scale", 100))
         self.setWindowTitle("Phasm")
         self.setWindowIcon(QIcon(str(config.project_root / "assets" / "icon.svg")))
         self.setStyleSheet(get_stylesheet())
@@ -650,6 +655,7 @@ class MainWindow(QMainWindow):
             "font-size: 14px; letter-spacing: 1px; padding: 10px 4px; } "
             f"QPushButton:hover, QPushButton:focus, QPushButton:pressed {{ background: transparent; color: {get_theme_colors(accent_name=config.settings.get('accent'))['ACCENT']}; }}"
         )
+        brand.clicked.connect(lambda _checked=False: sound_manager.play("click"))
         brand.clicked.connect(self._show_home)
         brand_layout.addWidget(brand, 1)
 
@@ -674,6 +680,7 @@ class MainWindow(QMainWindow):
         for index, (button, slot) in enumerate(nav_items):
             button.setFocusPolicy(Qt.StrongFocus)
             button.setCursor(Qt.PointingHandCursor)
+            button.clicked.connect(lambda _checked=False: sound_manager.play("click"))
             button.clicked.connect(slot)
             if button is self.nav_account:
                 account_divider = QLabel()
@@ -764,7 +771,7 @@ class MainWindow(QMainWindow):
             )
         )
 
-        self.quit_dialog.confirmed.connect(QCoreApplication.quit)
+        self.quit_dialog.confirmed.connect(self._confirm_quit)
         self.quit_dialog.cancelled.connect(self._hide_quit)
 
         self._artwork_thread = None
@@ -795,6 +802,16 @@ class MainWindow(QMainWindow):
         else:
             self.resize(1280, 720)
         self.setMinimumSize(720, 480)
+
+    def apply_scale(self, scale):
+        """Apply the persisted UI scale to Qt's application font."""
+        scale = max(25, min(300, int(scale)))
+        app = QApplication.instance()
+        if app is None:
+            return
+        font = app.font()
+        font.setPointSizeF(max(5.0, 12.0 * scale / 100.0))
+        app.setFont(font)
 
     def _prepare_controller_input(self):
         """Make controller input authoritative and restore a missing focus target."""
@@ -944,9 +961,8 @@ class MainWindow(QMainWindow):
             self._scan_cooldown.start()
 
     def _on_collections_changed(self, collection_names):
-        platforms = sorted({g.get("platform", "").upper() for g in self.home.games if g.get("platform") and str(g.get("platform")).casefold() not in ("switch", "pc")})
         current = self._sections[self._section_index] if self._sections and self._section_index < len(self._sections) else "HOME"
-        self._sections = ["HOME"] + platforms + [f"collection:{name}" for name in collection_names] + ["SEARCH", "SETTINGS"]
+        self._sections = ["HOME"] + [f"collection:{name}" for name in collection_names] + ["SEARCH", "SETTINGS"]
         self._section_index = self._sections.index(current) if current in self._sections else 0
         self._update_section_nav()
 
@@ -962,6 +978,20 @@ class MainWindow(QMainWindow):
     def _on_art_ready(self, key, cover, hero, logo):
         self.home.update_card_art(key, cover or None, hero or None, logo or None)
         self.search.update_game_art(key, cover or None)
+        # Keep artwork found by the background worker in the same persistent
+        # metadata index used by startup enrichment.  Otherwise a launch with
+        # partially cached artwork would schedule the same local lookup again.
+        from core.metadata import _save_local_metadata
+        for game in self.home.games:
+            if game.get("key") == key:
+                if cover:
+                    game["cover_path"] = cover
+                if hero:
+                    game["hero_path"] = hero
+                if logo:
+                    game["logo_path"] = logo
+                _save_local_metadata(game)
+                break
 
     def _section_next(self):
         if self.quit_container.isVisible(): return
@@ -1035,8 +1065,13 @@ class MainWindow(QMainWindow):
         self.quit_container.show()
         self.quit_container.raise_()
         self.quit_dialog.btn_cancel.setFocus(Qt.PopupFocusReason)
+
+    def _confirm_quit(self):
+        sound_manager.play("quit")
+        QCoreApplication.quit()
         
     def _hide_quit(self):
+        sound_manager.play("back")
         self.quit_container.hide()
         self.home._restore_focus()
         if QApplication.focusWidget() is None:
@@ -1116,6 +1151,7 @@ class MainWindow(QMainWindow):
 
     def _launch_game(self, game_dict):
         minimize = config.settings.get("minimize_on_launch", False)
+        sound_manager.fade_ambience_out()
         if minimize:
             self.showMinimized()
         # If not minimizing, stay visible in fullscreen — no change needed
@@ -1137,9 +1173,12 @@ class MainWindow(QMainWindow):
                 self._active_session.start()
                 
                 self.home.set_now_playing(game_dict)
+            else:
+                sound_manager.fade_ambience_in()
                 
         except Exception as e:
-            QMessageBox.warning(
+            sound_manager.fade_ambience_in()
+            show_message(
                 self,
                 "Phasm",
                 f"Could not launch {game_dict.get('title', 'game')}.\n\n{e}",
@@ -1147,6 +1186,7 @@ class MainWindow(QMainWindow):
 
             
     def _on_session_ended(self, game_key, duration):
+        sound_manager.fade_ambience_in()
         # Always restore the window - fullscreen if it was fullscreen before
         if self.isMinimized():
             if config.settings.get("fullscreen", True):

@@ -30,14 +30,17 @@ class PlatformTab(QWidget):
         self._pressed_index = None
 
     def set_platforms(self, platforms, collections=None):
+        """Refresh navigation with Home and user-created collections only.
+
+        Platforms are filters inside the library views, not collections.  Do
+        not expose them as top-level tabs: unlike collections, they are
+        generated from scanned games and cannot be manually reordered.
+        ``platforms`` remains an argument for callers that refresh the tab
+        bar after a scan.
+        """
         current_value = self.current_value()
         self.tabs = ["HOME"]
         self.tab_values = ["HOME"]
-        for p in sorted(platforms):
-            if str(p).casefold() in ("switch", "pc"):
-                continue
-            self.tabs.append(p.upper())
-            self.tab_values.append(p.upper())
         for name in (collections or []):
             self.tabs.append(str(name).upper())
             self.tab_values.append(f"collection:{name}")

@@ -68,12 +68,14 @@ class ConfigManager:
             },
             "fullscreen": True,
             "minimize_on_launch": False,
+            "scale": 100,
             "show_empty_platforms": False,
             "hero_orientation": "vertical",
             "hero_width": 360,
             "hero_height": 260,
             "accent": "Violet",
-            "background_mode": "hero_full"
+            "background_mode": "hero_full",
+            "badge_icons": {}
         }
         self.userdata = {"favorites": [], "recently_played": []}
         self.library = {"libraries": {}}
@@ -109,7 +111,47 @@ class ConfigManager:
         self.settings["background_mode"] = "hero_full"
         self.userdata = self.load_json(self.userdata_file, self.userdata)
         self.library = self.load_json(self.library_file, self.library)
-        self.emulators = self.load_json(self.emulators_file, self.emulators)
+        self.emulators = self._normalize_emulators(
+            self.load_json(self.emulators_file, self.emulators)
+        )
+
+    @staticmethod
+    def _emulator_arguments(platform, command):
+        if platform == "PS4" and command != "flatpak":
+            return ["-g", "{game}"]
+        if platform == "Switch" and command == "flatpak":
+            return ["run", "io.github.ryubing.Ryujinx", "{game}"]
+        return ["{game}"]
+
+    @classmethod
+    def _normalize_emulators(cls, data):
+        """Return the flat platform -> executable map used by the settings UI.
+
+        Older files may contain both a nested ``emulators`` table and flat
+        platform keys.  Prefer a non-empty flat value because that is what the
+        settings screen wrote, while retaining nested commands as defaults.
+        """
+        if not isinstance(data, dict):
+            return {}
+
+        normalized = {}
+        nested = data.get("emulators", {})
+        if isinstance(nested, dict):
+            for platform, entry in nested.items():
+                if isinstance(entry, dict):
+                    command = entry.get("command", "")
+                else:
+                    command = entry
+                if isinstance(command, str) and command.strip():
+                    normalized[platform] = command.strip()
+
+        for platform, value in data.items():
+            if platform == "emulators":
+                continue
+            if isinstance(value, str) and value.strip():
+                normalized[platform] = value.strip()
+
+        return normalized
 
     def save_settings(self):
         self.save_json(self.settings_file, self.settings)
@@ -121,6 +163,18 @@ class ConfigManager:
         self.save_json(self.library_file, self.library)
 
     def save_emulators(self):
-        self.save_json(self.emulators_file, self.emulators)
+        self.save_json(
+            self.emulators_file,
+            {
+                "emulators": {
+                    platform: {
+                        "command": command,
+                        "arguments": self._emulator_arguments(platform, command),
+                    }
+                    for platform, command in self.emulators.items()
+                    if isinstance(command, str) and command.strip()
+                }
+            },
+        )
 
 config = ConfigManager()

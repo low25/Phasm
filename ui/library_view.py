@@ -15,7 +15,7 @@ from core.config import config
 from ui.theme import get_theme_colors
 
 
-PLATFORMS = ("PS2", "PS3", "PS4", "Switch")
+PLATFORMS = ("PS1", "PS2", "PS3", "PS4", "Switch")
 
 
 class LibraryView(QWidget):
@@ -107,7 +107,11 @@ class LibraryView(QWidget):
             f"QFrame {{ background: {colors['SURFACE']}; border: 1px solid {colors['PANEL']}; border-radius: 0px; }}"
         )
     def _add_folder(self, platform):
-        folder = QFileDialog.getExistingDirectory(self, f"Add {platform} Game Folder")
+        options = QFileDialog.Options()
+        options |= QFileDialog.DontUseNativeDialog
+        folder = QFileDialog.getExistingDirectory(
+            self, f"Add {platform} Game Folder", "", options=options
+        )
         if folder:
             listing = self.folder_lists[platform]
             if folder not in [listing.item(i).text() for i in range(listing.count())]:

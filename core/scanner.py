@@ -4,6 +4,10 @@ from core.library import game_is_installed, should_show_game
 
 
 GAME_EXTENSIONS = {
+    "PS1": {
+        ".cue",
+        ".bin",
+    },
     "PS2": {
         ".iso",
         ".chd",
@@ -71,6 +75,8 @@ def _scan_library_directory(platform, directory):
         return scan_ps3(root)
     if platform == "PS4":
         return scan_ps4(root)
+    if platform == "PS1":
+        return scan_ps1(root)
     return scan_files(root, platform)
 
 
@@ -131,6 +137,55 @@ def scan_ps3(root):
                 "path": str(game_dir),
                 "type": "directory",
             })
+
+    return games
+
+
+def scan_ps1(root):
+    """Scan PS1 CUE/BIN and CHD layouts.
+
+    Each immediate child directory of the configured PS1 library is treated
+    as one game.  A CUE file is preferred because it preserves the complete
+    disc track layout; BIN and CHD are used as fallbacks.  CHD files may also
+    be placed directly in the configured PS1 library.
+    """
+    games = []
+
+    # A CHD can be stored directly in PS1Games, unlike CUE/BIN layouts which
+    # use one folder per game.
+    for path in sorted(
+        (path for path in root.iterdir() if path.is_file() and path.suffix.casefold() == ".chd"),
+        key=lambda path: path.name.casefold(),
+    ):
+        games.append({
+            "title": clean_title(path.stem),
+            "platform": "PS1",
+            "path": str(path),
+            "type": "file",
+        })
+
+    for game_dir in sorted((path for path in root.iterdir() if path.is_dir()), key=lambda path: path.name.casefold()):
+        game_files = (path for path in game_dir.iterdir() if path.is_file())
+        cue_files = sorted((path for path in game_files if path.suffix.casefold() == ".cue"), key=lambda path: path.name.casefold())
+        # Re-enumerate because the generator above is consumed by cue_files.
+        bin_files = sorted(
+            (path for path in game_dir.iterdir() if path.is_file() and path.suffix.casefold() == ".bin"),
+            key=lambda path: path.name.casefold(),
+        )
+        chd_files = sorted(
+            (path for path in game_dir.iterdir() if path.is_file() and path.suffix.casefold() == ".chd"),
+            key=lambda path: path.name.casefold(),
+        )
+        launch_path = cue_files[0] if cue_files else (bin_files[0] if bin_files else (chd_files[0] if chd_files else None))
+        if launch_path is None:
+            continue
+
+        games.append({
+            "title": clean_title(game_dir.name),
+            "platform": "PS1",
+            "path": str(launch_path),
+            "type": "file",
+        })
 
     return games
 

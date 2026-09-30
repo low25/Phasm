@@ -2,6 +2,7 @@ from PySide6.QtWidgets import QListWidget, QListWidgetItem, QWidget, QLabel, QHB
 from PySide6.QtCore import Qt, Signal, QSize
 from PySide6.QtGui import QPixmap
 from core.config import config
+from core.badges import badge_pixmap
 from ui.theme import get_theme_colors
 
 
@@ -35,16 +36,11 @@ class GameList(QListWidget):
             platform_icon.setFixedSize(36, 36)
             platform_icon.setAlignment(Qt.AlignCenter)
             platform_icon.setStyleSheet(self._platform_badge_style(platform))
-            logo_file = {
-                "PS2": "ps2-logo.png", "PS3": "ps3-logo.png",
-                "SWITCH": "switch-logo.png",
-            }.get(str(platform).upper())
-            if logo_file:
-                pixmap = QPixmap(str(config.project_root / "assets" / "Emus" / logo_file))
-                if not pixmap.isNull():
-                    platform_icon.setPixmap(pixmap.scaled(25, 25, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            pixmap = badge_pixmap(platform, QSize(25, 25))
+            if not pixmap.isNull():
+                platform_icon.setPixmap(pixmap)
             else:
-                platform_icon.setText({"PC": "▣", "PS4": "◈"}.get(str(platform).upper(), "✦"))
+                platform_icon.setText({"PC": "▣", "PS1": "◈", "PS4": "◈"}.get(str(platform).upper(), "✦"))
 
             title_label = QLabel(title)
             title_label.setStyleSheet("color: #ffffff; font-size: 16px; font-weight: bold;")
@@ -113,13 +109,14 @@ class GameList(QListWidget):
     @staticmethod
     def _platform_badge_style(platform):
         styles = {
-            "PS2": "background: #003087; border: 1px solid #4f8cff; border-radius: 18px;",
-            "PS3": "background: #003791; border: 1px solid #4f8cff; border-radius: 18px;",
-            "PS4": "background: #00439c; border: 1px solid #4f8cff; border-radius: 18px; color: white;",
+            "PS1": "background: #ffffff; border: 1px solid #cbd5e1; border-radius: 18px; color: #111827;",
+            "PS2": "background: #ffffff; border: 1px solid #cbd5e1; border-radius: 18px; color: #111827;",
+            "PS3": "background: #ffffff; border: 1px solid #cbd5e1; border-radius: 18px; color: #111827;",
+            "PS4": "background: #ffffff; border: 1px solid #cbd5e1; border-radius: 18px; color: #111827;",
             "SWITCH": "background: white; border: 1px solid #cbd5e1; border-radius: 18px; color: #111827;",
-            "PC": "background: #1b75bb; border: 1px solid #7dd3fc; border-radius: 18px; color: white;",
+            "PC": "background: #ffffff; border: 1px solid #cbd5e1; border-radius: 18px; color: #111827;",
         }
-        return styles.get(str(platform).upper(), "background: #27223d; border-radius: 18px; color: white;")
+        return styles.get(str(platform).upper(), "background: #ffffff; border: 1px solid #cbd5e1; border-radius: 18px; color: #111827;")
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_Up and self.currentRow() <= 0:

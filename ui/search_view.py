@@ -6,6 +6,7 @@ from pathlib import Path
 from difflib import SequenceMatcher
 from core import userdata
 from core.config import config
+from core.badges import badge_pixmap
 from ui.theme import get_theme_colors
 
 class SearchView(QWidget):
@@ -21,7 +22,7 @@ class SearchView(QWidget):
         self.results_mode = False
         self._active_keyboard_button = None
         self.active_platform_filter = 'ALL'
-        self.platforms = ['ALL', 'PC', 'PS2', 'PS3', 'PS4', 'SWITCH']
+        self.platforms = ['ALL', 'PC', 'PS1', 'PS2', 'PS3', 'PS4', 'SWITCH']
         self.filter_buttons = []
         palette = get_theme_colors(accent_name=config.settings.get("accent"))
 
@@ -470,26 +471,18 @@ class SearchView(QWidget):
             emulator_icon.setAlignment(Qt.AlignCenter)
             emulator_icon.setFixedSize(34, 34)
             badge_style = {
-                "PC": "background: #ffffff; border: 1px solid rgba(0,0,0,90); border-radius: 17px; color: #17456b;",
-                "PS2": "background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #001a5e, stop:1 #0050d0); border: 1px solid rgba(255,255,255,90); border-radius: 17px;",
-                "PS3": "background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #001060, stop:1 #003fc7); border: 1px solid rgba(255,255,255,90); border-radius: 17px;",
-                "PS4": "background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #00185a, stop:1 #0044bb); border: 1px solid rgba(255,255,255,90); border-radius: 17px;",
+                "PC": "background: #ffffff; border: 1px solid rgba(0,0,0,90); border-radius: 17px; color: #111827;",
+                "PS2": "background: #ffffff; border: 1px solid rgba(0,0,0,90); border-radius: 17px; color: #111827;",
+                "PS3": "background: #ffffff; border: 1px solid rgba(0,0,0,90); border-radius: 17px; color: #111827;",
+                "PS4": "background: #ffffff; border: 1px solid rgba(0,0,0,90); border-radius: 17px; color: #111827;",
                 "SWITCH": "background: #ffffff; border: 1px solid rgba(0,0,0,90); border-radius: 17px; color: #000000;",
             }
-            emulator_icon.setStyleSheet(badge_style.get(platform.upper(), "background: #27223d; border-radius: 17px;"))
-            logo_file = {"PS2": "ps2-logo.png", "PS3": "ps3-logo.png", "SWITCH": "switch-logo.png"}.get(platform)
-            logo_path = (
-                config.project_root / "assets" / "Emus" / logo_file
-                if logo_file else
-                config.project_root / "assets" / "UI" / "pc_badge.svg"
-                if platform == "PC" else None
-            )
-            if logo_path is not None:
-                pixmap = QPixmap(str(logo_path))
-                if not pixmap.isNull():
-                    emulator_icon.setPixmap(pixmap.scaled(24, 24, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            emulator_icon.setStyleSheet(badge_style.get(platform.upper(), "background: #ffffff; border: 1px solid rgba(0,0,0,90); border-radius: 17px; color: #111827;"))
+            pixmap = badge_pixmap(platform, QSize(24, 24))
+            if not pixmap.isNull():
+                emulator_icon.setPixmap(pixmap)
             else:
-                emulator_icon.setText({"PS4": "◈"}.get(platform, "✦"))
+                emulator_icon.setText({"PS1": "◈", "PS4": "◈"}.get(platform, "✦"))
 
             steam_icon = QLabel()
             steam_icon.setFixedSize(38, 54)

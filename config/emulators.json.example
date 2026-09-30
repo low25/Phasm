@@ -1,5 +1,9 @@
 {
     "emulators": {
+        "PS1": {
+            "command": "",
+            "arguments": ["{game}"]
+        },
         "PS2": {
             "command": "emulators/pcsx2-v2.8.2-linux-appimage-x64-Qt.AppImage",
             "arguments": ["{game}"]

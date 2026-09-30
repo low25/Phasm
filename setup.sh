@@ -115,6 +115,40 @@ create_config_from_example() {
     fi
 }
 
+install_dolphin_service_menu() {
+    local data_home="${XDG_DATA_HOME:-${HOME}/.local/share}"
+    local service_dir="$data_home/kio/servicemenus"
+    local bin_dir="${HOME}/.local/bin"
+    local extractor="$bin_dir/phasm-extract-archive"
+    local service_menu="$service_dir/PhasmExtract.desktop"
+
+    mkdir -p "$service_dir" "$bin_dir"
+    cp "$SCRIPT_DIR/packaging/extract-archive.sh" "$extractor"
+    chmod +x "$extractor"
+    sed "s|@EXTRACTOR@|$extractor|g" \
+        "$SCRIPT_DIR/packaging/PhasmExtract.desktop" > "$service_menu"
+    chmod +x "$service_menu"
+
+    # Remove the old Phasm duplicate. Dolphin already provides this action;
+    # configure that built-in action to use the user's Alacritty desktop file.
+    rm -f "$service_dir/PhasmTerminal.desktop" "$bin_dir/phasm-open-terminal-here"
+    if command -v kwriteconfig6 >/dev/null 2>&1; then
+        kwriteconfig6 --notify --file kdeglobals --group General --key TerminalService Alacritty.desktop
+        success "Configured Dolphin's Open Terminal Here action for Alacritty"
+    elif command -v kwriteconfig5 >/dev/null 2>&1; then
+        kwriteconfig5 --file kdeglobals --group General --key TerminalService Alacritty.desktop
+        success "Configured Dolphin's Open Terminal Here action for Alacritty"
+    else
+        warn "kwriteconfig was not found; set General/TerminalService to Alacritty.desktop manually"
+    fi
+    if command -v kbuildsycoca6 >/dev/null 2>&1; then
+        kbuildsycoca6 --noincremental >/dev/null 2>&1 || true
+    elif command -v kbuildsycoca5 >/dev/null 2>&1; then
+        kbuildsycoca5 --noincremental >/dev/null 2>&1 || true
+    fi
+    success "Installed Dolphin archive extraction menu"
+}
+
 ensure_qt_runtime() {
     local packages=(
         libxcb
@@ -275,6 +309,7 @@ create_config_from_example "settings.json"
 create_config_from_example "library.json"
 create_config_from_example "userdata.json"
 create_config_from_example "emulators.json"
+install_dolphin_service_menu
 success "Runtime folders are ready"
 pause_for_user
 

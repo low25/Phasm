@@ -1,9 +1,9 @@
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QTabWidget, QAbstractSpinBox,
                                QPushButton, QScrollArea, QLineEdit, QCheckBox,
-                               QFileDialog, QSpinBox, QColorDialog)
+                               QFileDialog, QSpinBox, QColorDialog, QGridLayout)
 from PySide6.QtWidgets import QSlider, QApplication
-from PySide6.QtCore import Qt, Signal, QPropertyAnimation, QEasingCurve, QPoint, QPointF, QTimer
-from PySide6.QtGui import QColor, QPainter, QPen, QImage
+from PySide6.QtCore import Qt, Signal, QPropertyAnimation, QEasingCurve, QPoint, QPointF, QTimer, QSize
+from PySide6.QtGui import QColor, QPainter, QPen, QImage, QIcon
 from core.config import config
 from core import userdata
 from ui.sound_manager import sound_manager
@@ -281,6 +281,7 @@ class SettingsView(QWidget):
         self._section_labels = {}
 
         self._build_ui()
+        self._apply_setting_icons()
         self._organize_settings_tabs()
         self._style_settings_controls()
         self._settings_save_timer = QTimer(self)
@@ -290,6 +291,7 @@ class SettingsView(QWidget):
         self._toggle_boxes = self.findChildren(QCheckBox)
         for toggle in self._toggle_boxes:
             toggle.stateChanged.connect(lambda state, control=toggle: self._update_toggle_color(control, state))
+            toggle.stateChanged.connect(lambda _state: sound_manager.play("ui_toggle"))
             self._update_toggle_color(toggle, toggle.checkState())
         
         self._connect_auto_save()
@@ -298,7 +300,7 @@ class SettingsView(QWidget):
     def _build_ui(self):
         self._add_section("GAME LIBRARIES")
         self.lib_inputs = {}
-        for p in ["PS2", "PS3", "PS4", "Switch"]:
+        for p in ["PS1", "PS2", "PS3", "PS4", "Switch"]:
             row = QHBoxLayout()
             label = QLabel(f"{p} Library:")
             label.setFixedWidth(130)
@@ -323,7 +325,7 @@ class SettingsView(QWidget):
 
         self._add_section("EMULATORS")
         self.emu_inputs = {}
-        for p in ["PS2", "PS3", "PS4", "Switch"]:
+        for p in ["PS1", "PS2", "PS3", "PS4", "Switch"]:
             row = QHBoxLayout()
             label = QLabel(f"{p} Emulator:")
             label.setFixedWidth(130)
@@ -357,13 +359,55 @@ class SettingsView(QWidget):
         self.chk_fs = QCheckBox("Fullscreen Mode")
         self.chk_fs.setChecked(config.settings.get("fullscreen", True))
         self.chk_fs.setFocusPolicy(Qt.StrongFocus)
-        self.layout.addWidget(self.chk_fs)
-
         self.chk_custom_cursor = QCheckBox("Use custom accent cursor")
         self.chk_custom_cursor.setChecked(config.settings.get("custom_cursor", True))
         self.chk_custom_cursor.setFocusPolicy(Qt.StrongFocus)
         self.chk_custom_cursor.stateChanged.connect(self._custom_cursor_changed)
-        self.layout.addWidget(self.chk_custom_cursor)
+        appearance_toggles = QHBoxLayout()
+        appearance_toggles.setSpacing(28)
+        appearance_toggles.addWidget(self.chk_fs)
+        appearance_toggles.addWidget(self.chk_custom_cursor)
+        appearance_toggles.addStretch()
+        self.layout.addLayout(appearance_toggles)
+
+        scale_row = QHBoxLayout()
+        scale_row.addWidget(QLabel("Scale:"))
+        self.scale_slider = QSlider(Qt.Horizontal)
+        # The midpoint represents the natural 100% setting. The lower half
+        # covers 25–100%; the upper half covers 100–300%.
+        self.scale_slider.setRange(0, 100)
+        self.scale_slider.setValue(self._slider_value_for_scale(config.settings.get("scale", 100)))
+        self.scale_slider.setFocusPolicy(Qt.StrongFocus)
+        scale_row.addWidget(self.scale_slider, 1)
+        self.scale_value = QLabel()
+        scale_row.addWidget(self.scale_value)
+        self.scale_slider.valueChanged.connect(self._scale_changed)
+        self._scale_changed(self.scale_slider.value())
+        self.layout.addLayout(scale_row)
+
+        self._add_section("BADGE ICONS")
+        self.badge_icon_inputs = {}
+        badge_icons = config.settings.get("badge_icons", {})
+        for p in ["PC", "PS1", "PS2", "PS3", "PS4", "Switch"]:
+            row = QHBoxLayout()
+            label = QLabel(f"{p} Badge Icon:")
+            label.setFixedWidth(130)
+            row.addWidget(label)
+            inp = QLineEdit(badge_icons.get(p.upper(), ""))
+            inp.setPlaceholderText("Optional custom image path")
+            inp.setFocusPolicy(Qt.StrongFocus)
+            inp.setMinimumWidth(0)
+            row.addWidget(inp, 1)
+            btn_br = QPushButton("📁")
+            btn_br.setToolTip("Choose badge image")
+            btn_br.setAccessibleName(f"Choose {p} badge icon")
+            btn_br.setCursor(Qt.PointingHandCursor)
+            btn_br.setFixedWidth(50)
+            btn_br.setFocusPolicy(Qt.StrongFocus)
+            btn_br.clicked.connect(lambda checked=False, i=inp: self._browse_file(i))
+            row.addWidget(btn_br)
+            self.badge_icon_inputs[p] = inp
+            self.layout.addLayout(row)
         
         row = QHBoxLayout()
         label = QLabel("SteamGridDB API Key:")
@@ -424,12 +468,9 @@ class SettingsView(QWidget):
         self.effects_volume_value = QLabel(f"{self.effects_volume.value()}%")
         self.effects_volume.valueChanged.connect(lambda value: self.effects_volume_value.setText(f"{value}%"))
         effects_row.addWidget(self.effects_volume_value)
-        self.layout.addLayout(effects_row)
         self.chk_effects = QCheckBox("Enable sound effects")
         self.chk_effects.setChecked(effects_cfg.get("enabled", sound_cfg.get("enabled", True)))
         self.chk_effects.setFocusPolicy(Qt.StrongFocus)
-        self.layout.addWidget(self.chk_effects)
-
         music_row = QHBoxLayout()
         music_row.addWidget(QLabel("Music volume:"))
         self.music_volume = QSlider(Qt.Horizontal)
@@ -440,11 +481,23 @@ class SettingsView(QWidget):
         self.music_volume_value = QLabel(f"{self.music_volume.value()}%")
         self.music_volume.valueChanged.connect(lambda value: self.music_volume_value.setText(f"{value}%"))
         music_row.addWidget(self.music_volume_value)
-        self.layout.addLayout(music_row)
         self.chk_music = QCheckBox("Enable music / ambience")
         self.chk_music.setChecked(music_cfg.get("enabled", True))
         self.chk_music.setFocusPolicy(Qt.StrongFocus)
-        self.layout.addWidget(self.chk_music)
+        audio_sliders = QGridLayout()
+        audio_sliders.setHorizontalSpacing(24)
+        audio_sliders.setVerticalSpacing(8)
+        audio_sliders.addLayout(effects_row, 0, 0)
+        audio_sliders.addLayout(music_row, 0, 1)
+        audio_sliders.setColumnStretch(0, 1)
+        audio_sliders.setColumnStretch(1, 1)
+        self.layout.addLayout(audio_sliders)
+        audio_toggles = QHBoxLayout()
+        audio_toggles.setSpacing(28)
+        audio_toggles.addWidget(self.chk_effects)
+        audio_toggles.addWidget(self.chk_music)
+        audio_toggles.addStretch()
+        self.layout.addLayout(audio_toggles)
 
         self._add_section("GENERAL")
         self.chk_min = QCheckBox("Minimize on Launch")
@@ -505,6 +558,7 @@ class SettingsView(QWidget):
                 page_layouts[current].addItem(item)
         self.layout.addWidget(tabs)
         self._settings_tabs = tabs
+        tabs.currentChanged.connect(lambda _index: sound_manager.play("ui_toggle"))
         self._settings_pages = pages
         page_layouts["AUDIO"].setContentsMargins(12, 2, 12, 10)
         page_layouts["AUDIO"].setSpacing(5)
@@ -512,13 +566,55 @@ class SettingsView(QWidget):
     def _add_section(self, text):
         lbl = QLabel(text)
         palette = get_theme_colors(accent_name=config.settings.get("accent"))
+        icon_names = {
+            "GAME LIBRARIES": "library", "EMULATORS": "emulator",
+            "APPEARANCE": "appearance", "BADGE ICONS": "badge",
+            "HERO DISPLAY": "display", "SOUND": "sound",
+            "GENERAL": "general", "PLAYTIME": "playtime",
+        }
+        icon_path = config.project_root / "assets" / "icons" / "settings" / f"{icon_names.get(text, 'general')}.svg"
+        if icon_path.exists():
+            lbl.setText(f"<img src='{icon_path}' width='20' height='20'/> &nbsp; {text}")
         lbl.setStyleSheet(
             f"font-size: 16px; font-weight: bold; color: {palette['ACCENT2']}; "
             "letter-spacing: 2px; margin-top: 8px; padding-bottom: 6px; "
-            f"border-bottom: 1px solid {palette['PANEL']};"
+            f"border-bottom: 1px dashed {palette['ACCENT']};"
         )
         self.layout.addWidget(lbl)
         self._section_labels[text] = lbl
+
+    def _apply_setting_icons(self):
+        """Give every compact setting control a consistent visual cue."""
+        icon_dir = config.project_root / "assets" / "icons" / "settings"
+        label_icons = {
+            "Library:": "library", "Emulator:": "emulator", "Accent:": "appearance",
+            "Scale:": "appearance", "Badge Icon:": "badge", "SteamGridDB API Key:": "general",
+            "RAWG API Key:": "general", "Orientation:": "display",
+            "Sound effects volume:": "sound", "Music volume:": "sound",
+        }
+        for label in self.findChildren(QLabel):
+            if label in self._section_labels.values():
+                continue
+            text = label.text()
+            icon_name = next((name for prefix, name in label_icons.items() if text.startswith(prefix)), None)
+            if icon_name:
+                path = icon_dir / f"{icon_name}.svg"
+                if path.exists():
+                    label.setText(f"<img src='{path}' width='18' height='18'/> &nbsp; {text}")
+
+        checkbox_icons = {
+            "Fullscreen Mode": "display", "Use custom accent cursor": "appearance",
+            "Enable SteamGridDB": "general", "Enable RAWG metadata": "general",
+            "Enable sound effects": "sound", "Enable music / ambience": "sound",
+            "Minimize on Launch": "general",
+        }
+        for checkbox in self.findChildren(QCheckBox):
+            icon_name = checkbox_icons.get(checkbox.text())
+            if icon_name:
+                path = icon_dir / f"{icon_name}.svg"
+                if path.exists():
+                    checkbox.setIcon(QIcon(str(path)))
+                    checkbox.setIconSize(QSize(18, 18))
 
     def _preview_theme(self):
         config.settings["accent"] = self.accent_select.property("accentHex") or "#7c3aed"
@@ -537,7 +633,7 @@ class SettingsView(QWidget):
             label.setStyleSheet(
                 f"font-size: 16px; font-weight: bold; color: {palette['ACCENT2']}; "
                 f"letter-spacing: 2px; margin-top: {margin}px; padding-bottom: 5px; "
-                f"border-bottom: 1px solid {palette['PANEL']};"
+                f"border-bottom: 1px dashed {palette['ACCENT']};"
             )
         home = getattr(window, "home", None)
         if home:
@@ -551,18 +647,56 @@ class SettingsView(QWidget):
         """Persist each setting as soon as its control changes."""
         for inp in self.lib_inputs.values():
             inp.editingFinished.connect(lambda: self._auto_save(rescan=True))
-        for inp in self.emu_inputs.values():
+        for platform, inp in self.emu_inputs.items():
+            # Emulator changes must be available to the next launch even if
+            # the user leaves the field with the mouse or closes settings.
+            inp.textChanged.connect(
+                lambda text, p=platform: self._save_emulator_path(p, text)
+            )
+        for inp in self.badge_icon_inputs.values():
             inp.editingFinished.connect(self._auto_save)
         for control in (
             self.chk_fs, self.chk_sgdb, self.chk_rawg, self.chk_effects,
             self.chk_music, self.chk_min,
         ):
-            control.stateChanged.connect(lambda _state: self._auto_save())
+            control.stateChanged.connect(lambda _state: self._queue_auto_save())
         for control in (self.inp_api, self.inp_rawg):
             control.textChanged.connect(lambda _text: self._auto_save())
         self.hero_orientation.currentIndexChanged.connect(lambda _value: self._auto_save())
         for control in (self.effects_volume, self.music_volume):
             control.valueChanged.connect(lambda _value: self._queue_auto_save())
+        self.scale_slider.valueChanged.connect(lambda _value: self._queue_auto_save())
+
+    @staticmethod
+    def _scale_for_slider(value):
+        value = max(0, min(100, int(value)))
+        if value <= 50:
+            return round(25 + value * 75 / 50)
+        return round(100 + (value - 50) * 200 / 50)
+
+    @staticmethod
+    def _slider_value_for_scale(scale):
+        scale = max(25, min(300, int(scale)))
+        if scale <= 100:
+            return round((scale - 25) * 50 / 75)
+        return round(50 + (scale - 100) * 50 / 200)
+
+    def _scale_changed(self, value):
+        scale = self._scale_for_slider(value)
+        self.scale_value.setText(f"{scale}%")
+        config.settings["scale"] = scale
+        window = self.window()
+        if hasattr(window, "apply_scale"):
+            window.apply_scale(scale)
+
+    def _save_emulator_path(self, platform, text):
+        """Update and persist one emulator path immediately while editing."""
+        path = text.strip()
+        if path:
+            config.emulators[platform] = path
+        else:
+            config.emulators.pop(platform, None)
+        config.save_emulators()
 
     def _update_toggle_color(self, control, state):
         checked = bool(state)
@@ -584,7 +718,7 @@ class SettingsView(QWidget):
             label.setStyleSheet(
                 f"font-size: 16px; font-weight: bold; color: {palette['ACCENT2']}; "
                 f"letter-spacing: 2px; margin-top: {margin}px; padding-bottom: 5px; "
-                f"border-bottom: 1px solid {palette['PANEL']};"
+                f"border-bottom: 1px dashed {palette['ACCENT']};"
             )
         line_style = (
             f"QLineEdit {{ background: rgba(0, 0, 0, 153); color: {palette['TEXT']}; "
@@ -631,7 +765,7 @@ class SettingsView(QWidget):
         if hasattr(window, "set_custom_cursor_enabled"):
             window.set_custom_cursor_enabled(enabled)
         self._update_toggle_color(self.chk_custom_cursor, state)
-        self._auto_save()
+        self._queue_auto_save()
 
     def _set_accent_button(self, value):
         if str(value) in ACCENT_PRESETS:
@@ -688,13 +822,21 @@ class SettingsView(QWidget):
         userdata.clear_playtime()
 
     def _browse_dir(self, line_edit):
-        d = QFileDialog.getExistingDirectory(self, "Select Directory", line_edit.text() or "/")
+        options = QFileDialog.Options()
+        options |= QFileDialog.DontUseNativeDialog
+        d = QFileDialog.getExistingDirectory(
+            self, "Select Directory", line_edit.text() or "/", options=options
+        )
         if d:
             line_edit.setText(d)
             self._auto_save(rescan=True)
 
     def _browse_file(self, line_edit):
-        f, _ = QFileDialog.getOpenFileName(self, "Select File", line_edit.text() or "/")
+        options = QFileDialog.Options()
+        options |= QFileDialog.DontUseNativeDialog
+        f, _ = QFileDialog.getOpenFileName(
+            self, "Select File", line_edit.text() or "/", options=options
+        )
         if f:
             line_edit.setText(f)
             self._auto_save()
@@ -718,10 +860,17 @@ class SettingsView(QWidget):
         for p, inp in self.emu_inputs.items():
             if inp.text().strip():
                 config.emulators[p] = inp.text().strip()
+
+        config.settings["badge_icons"] = {
+            p.upper(): inp.text().strip()
+            for p, inp in self.badge_icon_inputs.items()
+            if inp.text().strip()
+        }
                 
         config.settings["fullscreen"] = self.chk_fs.isChecked()
         config.settings["custom_cursor"] = self.chk_custom_cursor.isChecked()
         config.settings["minimize_on_launch"] = self.chk_min.isChecked()
+        config.settings["scale"] = self._scale_for_slider(self.scale_slider.value())
         config.settings["hero_orientation"] = "vertical" if self.hero_orientation.currentIndex() == 0 else "horizontal"
         config.settings["accent"] = self.accent_select.property("accentHex") or "#7c3aed"
         config.settings["background_mode"] = "hero_full"
@@ -741,12 +890,6 @@ class SettingsView(QWidget):
         sound_manager.set_effects_enabled(self.chk_effects.isChecked())
         sound_manager.set_music_volume(self.music_volume.value())
         sound_manager.set_music_enabled(self.chk_music.isChecked())
-        QApplication.instance().setStyleSheet(get_stylesheet())
-        # The application stylesheet is refreshed on every auto-save. Reapply
-        # the compact settings control metrics afterward so spin-box text does
-        # not regain the larger global padding while editing.
-        self._style_settings_controls()
-        
         sgdb = config.settings.get("steamgriddb", {})
         sgdb["api_key"] = self.inp_api.text().strip()
         sgdb["enabled"] = self.chk_sgdb.isChecked()

@@ -27,5 +27,6 @@
     "hero_height": 260,
     "accent": "Violet",
     "background_mode": "hero_full",
+    "badge_icons": {},
     "custom_cursor": true
 }

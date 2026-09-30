@@ -81,3 +81,29 @@ chmod +x "$APPDIR/AppRun"
 ARCH="$APPIMAGE_ARCH" "$APPIMAGETOOL" "${APPIMAGETOOL_ARGS[@]}" "$APPDIR" "$OUTPUT"
 chmod +x "$OUTPUT"
 printf 'Created %s\n' "$OUTPUT"
+
+# Gear Lever can both move the AppImage to its managed location and create the
+# desktop-menu entry.  Offer that optional step only when Gear Lever is
+# actually available; a normal AppImage build must still finish cleanly on
+# systems that do not use it.
+GEARLEVER=()
+if command -v gearlever >/dev/null 2>&1; then
+    GEARLEVER=(gearlever)
+elif command -v flatpak >/dev/null 2>&1 && flatpak info it.mijorus.gearlever >/dev/null 2>&1; then
+    GEARLEVER=(flatpak run it.mijorus.gearlever)
+fi
+
+if ((${#GEARLEVER[@]} == 0)); then
+    printf 'Gear Lever not detected; leaving the AppImage at %s\n' "$OUTPUT"
+elif [[ -t 0 && -t 1 ]]; then
+    # Gear Lever provides its own safety confirmation. Invoke it directly so
+    # the user sees only Gear Lever's native "Do you really want to integrate
+    # this AppImage?" prompt.
+    if "${GEARLEVER[@]}" --integrate "$OUTPUT"; then
+        printf 'Phasm integration requested through Gear Lever.\n'
+    else
+        printf 'Gear Lever could not integrate Phasm; the AppImage remains at %s\n' "$OUTPUT" >&2
+    fi
+else
+    printf 'Gear Lever detected, but this build is non-interactive; leaving the AppImage at %s\n' "$OUTPUT"
+fi

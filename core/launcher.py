@@ -13,41 +13,55 @@ class EmulatorLauncher:
         with open(self.config_path, "r", encoding="utf-8") as file:
             config = json.load(file)
 
-        emulators = config["emulators"]
-        # Settings stores user-selected emulator paths at the top level for
-        # compatibility with the settings file. Apply those overrides to the
-        # runtime command table in both source and AppImage launches.
+        emulators = {}
+        nested = config.get("emulators", {})
+        if isinstance(nested, dict):
+            emulators.update(nested)
+
+        # Settings files from older versions stored selected paths at the top
+        # level. Apply those overrides so existing installations keep working.
         for platform, value in config.items():
-            if platform in emulators and isinstance(value, str) and value.strip():
-                emulators[platform]["command"] = value.strip()
+            if platform == "emulators":
+                continue
+            if isinstance(value, str) and value.strip():
+                arguments = ["-g", "{game}"] if platform == "PS4" else ["{game}"]
+                emulators[platform] = {
+                    "command": value.strip(),
+                    "arguments": arguments,
+                }
         return emulators
 
     def launch(self, game):
+        return subprocess.Popen(
+            self.command_for(game), stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        )
+
+    def command_for(self, game):
+        """Build the exact command used to launch a game."""
         if game.get("platform") == "PC":
             uri = game.get("launch_uri")
             if not uri:
                 raise ValueError("This PC game has no launcher URL")
-            return subprocess.Popen(["xdg-open", uri], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            return ["xdg-open", uri]
         platform = game["platform"]
 
-        if platform not in self.emulators:
+        emulator = self.emulators.get(platform)
+        if not isinstance(emulator, dict) or not emulator.get("command", "").strip():
             raise ValueError(f"No emulator configured for {platform}")
-
-        emulator = self.emulators[platform]
 
         command = [emulator["command"]]
 
-        # Resolve local emulator paths relative to Phasm.
+        # Use the exact path selected in Settings. Only bundled relative
+        # defaults are resolved against Phasm; an absolute user path must not
+        # be rewritten.
         if command[0] != "flatpak":
-            command[0] = str(self.project_root / command[0])
+            executable = Path(command[0]).expanduser()
+            if not executable.is_absolute():
+                executable = self.project_root / executable
+            command[0] = str(executable)
 
-        for argument in emulator["arguments"]:
+        for argument in emulator.get("arguments", ["{game}"]):
             command.append(argument.replace("{game}", game["path"]))
 
         print(f"[LAUNCH] {' '.join(command)}")
-
-        return subprocess.Popen(
-            command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
+        return command

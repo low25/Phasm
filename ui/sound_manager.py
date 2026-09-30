@@ -1,5 +1,5 @@
 import time
-from PySide6.QtCore import QUrl
+from PySide6.QtCore import QUrl, QPropertyAnimation, QEasingCurve
 from PySide6.QtMultimedia import QSoundEffect, QMediaPlayer, QAudioOutput
 from pathlib import Path
 from core.config import config
@@ -27,13 +27,18 @@ class SoundManager:
         self.enabled = self.effects_enabled
         self.volume = self.effects_volume
 
-        # The new focus/hover MP3 replaces the old navigation effect.
-        self.load_sound("navigate", "focus⁄hover.mp3")
+        # Keep the unnumbered files as the active soundpack.  Numbered files
+        # are intentionally left unused so they can be compared later.
+        self.load_sound("navigate", "hover.mp3")
+        self.load_sound("hover")
         self.load_sound("select")
         self.load_sound("back")
-        # The play action uses the dedicated play sound for both button press
-        # and emulator launch, with the older launch asset no longer preferred.
-        self.load_sound("launch", "play.mp3")
+        self.load_sound("modal_popup", "modalPopup.mp3")
+        self.load_sound("quit")
+        self.load_sound("click")
+        self.load_sound("ui_toggle", "ui_toggle.mp3")
+        self.load_sound("play")
+        self.load_sound("launch")
         self.load_sound("startup")
         self.load_sound("error")
         self._setup_ambience()
@@ -41,6 +46,11 @@ class SoundManager:
     def load_sound(self, name, filename=None):
         if filename:
             path = self.sounds_dir / filename
+            # A named fallback should never force WAV playback when a newer
+            # MP3 replacement with the same stem is available.
+            mp3_path = path.with_suffix(".mp3")
+            if path.suffix.lower() == ".wav" and mp3_path.exists():
+                path = mp3_path
         else:
             # Prefer a replacement MP3 when supplied, otherwise retain the
             # original WAV asset as a fallback.
@@ -66,6 +76,7 @@ class SoundManager:
         path = self.sounds_dir / "ambience.mp3"
         self.ambience = None
         self.ambience_output = None
+        self._ambience_fade = None
         if not path.exists():
             return
         self.ambience = QMediaPlayer()
@@ -76,6 +87,30 @@ class SoundManager:
         self.ambience.setLoops(QMediaPlayer.Loops.Infinite)
         if self.music_enabled:
             self.ambience.play()
+
+    def _fade_ambience_to(self, volume, duration=550):
+        if not self.ambience_output:
+            return
+        if self._ambience_fade is not None:
+            self._ambience_fade.stop()
+        fade = QPropertyAnimation(self.ambience_output, b"volume", self.ambience_output)
+        fade.setDuration(duration)
+        fade.setStartValue(float(self.ambience_output.volume()))
+        fade.setEndValue(max(0.0, min(1.0, float(volume))))
+        fade.setEasingCurve(QEasingCurve.OutCubic)
+        self._ambience_fade = fade
+        fade.start()
+
+    def fade_ambience_out(self):
+        """Lower menu ambience while an emulator/game is running."""
+        self._fade_ambience_to(0.0)
+
+    def fade_ambience_in(self):
+        """Restore menu ambience after returning from an emulator/game."""
+        target = self.music_volume if self.music_enabled else 0.0
+        if self.ambience and self.music_enabled:
+            self.ambience.play()
+        self._fade_ambience_to(target)
 
     def play(self, name):
         if not self.effects_enabled:

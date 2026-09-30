@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Service
+MimeType=application/zip;application/x-7z-compressed;application/vnd.rar;application/x-rar;application/x-rar-compressed;
+Actions=extractHere;
+X-KDE-ServiceTypes=KonqPopupMenu/Plugin
+X-KDE-Priority=TopLevel
+
+[Desktop Action extractHere]
+Name=Extract here
+Icon=archive-extract
+Exec=/bin/bash @EXTRACTOR@ %f

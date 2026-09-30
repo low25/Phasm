@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QApplication,
-    QPushButton, QScrollArea, QSizePolicy, QFrame, QTextBrowser, QMessageBox, QMenu, QDialog, QLineEdit, QGridLayout, QTabWidget,
+    QPushButton, QScrollArea, QSizePolicy, QFrame, QTextBrowser, QMenu, QDialog, QLineEdit, QGridLayout, QTabWidget,
 )
 from PySide6.QtCore import Qt, Signal, QObject, QTimer, QThread, QPropertyAnimation, QParallelAnimationGroup, QAbstractAnimation, QEasingCurve, QPoint, QRect, QSize, QEvent, QBuffer, QIODevice
 from PySide6.QtGui import QColor, QPixmap, QCursor, QIcon, QFont, QPainter, QLinearGradient, QImageReader
@@ -25,6 +25,8 @@ import requests
 from core.assets import SteamGridDB, download_custom_artwork
 from core.metadata import _save_local_metadata
 from core.artwork_color import dominant_accent
+from core.desktop_entry import create_desktop_entry, desktop_entry_exists, remove_desktop_entry
+from ui.phasm_dialog import show_message, confirm_message
 
 
 # ── Focus zones ───────────────────────────────────────────────────────────────
@@ -880,6 +882,7 @@ class _ArtworkPickerDialog(QDialog):
 
     def _tab_changed(self, index):
         if 0 <= index < len(self.ART_TYPES):
+            sound_manager.play("ui_toggle")
             self._start_fetch(self.ART_TYPES[index][0])
 
     def _start_fetch(self, kind):
@@ -1057,6 +1060,14 @@ class _ArtworkPickerDialog(QDialog):
         return False
 
     def eventFilter(self, obj, event):
+        tabs = getattr(self, "tabs", None)
+        current_buttons = []
+        if tabs is not None:
+            current_kind = self.ART_TYPES[tabs.currentIndex()][0]
+            current_buttons = self.buttons.get(current_kind, [])
+        if obj in current_buttons and event.type() in (QEvent.Type.Enter, QEvent.Type.FocusIn):
+            # Artwork choices use the same hover/focus sound as game cards.
+            sound_manager.play("navigate")
         if event.type() == QEvent.Type.KeyPress:
             key = event.key()
             # The controller maps LB/RB to bracket keys. Handle them anywhere
@@ -1152,6 +1163,10 @@ class _ArtworkPickerDialog(QDialog):
         if self._save_thread is not None and self._save_thread.isRunning():
             self.status.setText("Applying the previous artwork selection...")
             return
+        if kind == "icon":
+            home = self.parentWidget()
+            if hasattr(home, "begin_artwork_change_lock"):
+                home.begin_artwork_change_lock()
         self.status.setText(f"Applying {kind.upper()} artwork...")
         self._save_thread = _ArtworkSaveThread(kind, self.game, choice.get("url", ""), self)
         self._save_thread.saved.connect(self._artwork_saved)
@@ -1164,6 +1179,10 @@ class _ArtworkPickerDialog(QDialog):
 
     def _artwork_save_failed(self, kind, message):
         self.status.setText(f"Could not apply {kind.upper()} artwork: {message}")
+        if kind == "icon":
+            home = self.parentWidget()
+            if hasattr(home, "end_artwork_change_lock"):
+                home.end_artwork_change_lock()
 
 
 class HomeView(QWidget):
@@ -1202,6 +1221,7 @@ class HomeView(QWidget):
         self._platform_filter_value = "ALL"
         self._library_filter_value = "ALL"
         self._showing_recently_played = False
+        self._desktop_refresh_generation = 0
 
         self.starfield = Starfield(self)
         self.starfield.lower()
@@ -1408,6 +1428,7 @@ class HomeView(QWidget):
         # The old bottom section indicator is intentionally removed; navigation
         # is now handled by the sidebar and platform tabs.
         self._build_detail_overlay()
+        self._build_artwork_change_lock()
         self.apply_hero_settings(
             config.settings.get("hero_orientation", "vertical"),
             config.settings.get("hero_width", 360),
@@ -1520,6 +1541,8 @@ class HomeView(QWidget):
         if hasattr(self, "starfield"):
             self.starfield.setGeometry(self.rect())
             self.starfield.lower()
+        if hasattr(self, "artwork_change_lock"):
+            self.artwork_change_lock.setGeometry(self.rect())
         if self.width() > 0:
             if self._hero_orientation == "vertical":
                 configured = getattr(self, "_hero_size", (360, 260))[0]
@@ -1704,6 +1727,41 @@ class HomeView(QWidget):
         layout.addLayout(footer)
         self.detail_overlay.hide()
         self.detail_scrim.hide()
+
+    def _build_artwork_change_lock(self):
+        self.artwork_change_lock = QFrame(self)
+        self.artwork_change_lock.setObjectName("artworkChangeLock")
+        self.artwork_change_lock.setFocusPolicy(Qt.StrongFocus)
+        self.artwork_change_lock.setStyleSheet(
+            "QFrame#artworkChangeLock { background: rgba(4, 4, 10, 225); "
+            "border: 2px solid #7c3aed; border-radius: 14px; }"
+            "QLabel { color: #c084fc; font-size: 22px; font-weight: bold; "
+            "letter-spacing: 2px; }"
+        )
+        layout = QVBoxLayout(self.artwork_change_lock)
+        layout.setContentsMargins(20, 20, 20, 20)
+        label = QLabel("CHANGING ARTWORK...", self.artwork_change_lock)
+        label.setAlignment(Qt.AlignCenter)
+        layout.addStretch()
+        layout.addWidget(label)
+        layout.addStretch()
+        self.artwork_change_lock.setGeometry(self.rect())
+        self.artwork_change_lock.hide()
+
+    def begin_artwork_change_lock(self):
+        self.artwork_change_lock.setGeometry(self.rect())
+        self.artwork_change_lock.show()
+        self.artwork_change_lock.raise_()
+        self.artwork_change_lock.setFocus(Qt.PopupFocusReason)
+
+    def end_artwork_change_lock(self):
+        if hasattr(self, "artwork_change_lock"):
+            self.artwork_change_lock.hide()
+            dialog = getattr(self, "_artwork_dialog", None)
+            if dialog is not None and dialog.isVisible():
+                dialog._focus_artwork_result()
+            else:
+                self._restore_focus()
 
     def _detail_target_rect(self):
         width = min(1180, max(320, self.width() - 64))
@@ -1939,6 +1997,7 @@ class HomeView(QWidget):
         self.library_filter.setText(f"LIBRARY  ·  {library_labels.get(self._library_filter_value, self._library_filter_value)}")
 
     def _set_filter_value(self, kind, value):
+        sound_manager.play("ui_toggle")
         if kind == "platform":
             self._platform_filter_value = value
         else:
@@ -2041,7 +2100,7 @@ class HomeView(QWidget):
         def create_collection(name):
             name = userdata.create_collection(name.strip())
             if not name:
-                QMessageBox.warning(self, "Invalid Collection", "Choose a non-empty collection name other than HOME.")
+                show_message(self, "Invalid Collection", "Choose a non-empty collection name other than HOME.")
                 return
             for key in selected:
                 userdata.add_to_collection(name, key)
@@ -2260,6 +2319,7 @@ class HomeView(QWidget):
         self._finish_rows_rebuild()
 
     def _toggle_collection_view(self, name):
+        sound_manager.play("ui_toggle")
         current = userdata.get_collection_view(name)
         userdata.set_collection_view(name, "list" if current == "grid" else "grid")
         self._build_collection_tab(name)
@@ -2269,7 +2329,7 @@ class HomeView(QWidget):
         def rename_collection(new_name):
             renamed = userdata.rename_collection(old_name, new_name.strip())
             if not renamed:
-                QMessageBox.warning(
+                show_message(
                     self,
                     "Unable to Rename Collection",
                     "Choose a non-empty name other than HOME and avoid duplicate names.",
@@ -2283,14 +2343,11 @@ class HomeView(QWidget):
         self._open_collection_name_dialog(old_name, rename_collection)
 
     def _delete_collection(self, name):
-        answer = QMessageBox.question(
+        if not confirm_message(
             self,
             "Delete Collection",
             f'Delete the collection "{name}"? The games themselves will not be deleted.',
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        )
-        if answer != QMessageBox.StandardButton.Yes:
+        ):
             return
         # Leave the collection before rebuilding its tab list. Otherwise the
         # tab widget can already be on index 0 while HomeView still displays
@@ -2494,6 +2551,7 @@ class HomeView(QWidget):
     # ── Slots ──────────────────────────────────────────────────────────────
 
     def _on_tab_changed(self, tab_name):
+        sound_manager.play("ui_toggle")
         if tab_name == "HOME":
             self._build_home_tab()
         elif tab_name.startswith("collection:"):
@@ -2707,6 +2765,11 @@ class HomeView(QWidget):
             _modal_icon("heart-filled" if game_dict.get("is_favorite") else "heart"),
         )
         menu.add_action("EDIT ARTWORK", lambda: run(lambda: self._edit_game_artwork(game_dict)), menu_icon("edit"))
+        menu.add_action(
+            "REMOVE FROM DESKTOP" if desktop_entry_exists(game_dict) else "ADD TO DESKTOP",
+            lambda: run(lambda: self._add_to_desktop(game_dict)),
+            menu_icon("trash" if desktop_entry_exists(game_dict) else "plus"),
+        )
         menu.add_action("NEW COLLECTION...", lambda: run(lambda: self._create_collection_for_game(game_dict)), menu_icon("plus"))
 
         collections = userdata.get_collections()
@@ -2781,7 +2844,7 @@ class HomeView(QWidget):
         def create_collection(value):
             created = userdata.create_collection(value.strip())
             if not created:
-                QMessageBox.warning(self, "Invalid Collection", "Choose a name other than HOME.")
+                show_message(self, "Invalid Collection", "Choose a name other than HOME.")
                 return
             self._move_game_to_collection(game_dict, created)
 
@@ -2870,12 +2933,13 @@ class HomeView(QWidget):
             dialog.finished.connect(lambda _result: self._finish_artwork_editor(dialog))
             dialog.show()
             dialog.raise_()
+            sound_manager.play("modal_popup")
             dialog.tabs.tabBar().setFocus(Qt.PopupFocusReason)
         except Exception as exc:
             # Artwork search/download is optional; it must never terminate the
             # launcher if the API, image decoder, or local cache misbehaves.
             print(f"[ARTWORK] editor failed: {exc}")
-            QMessageBox.warning(self, "Artwork Editor", f"Could not open the artwork editor:\n{exc}")
+            show_message(self, "Artwork Editor", f"Could not open the artwork editor:\n{exc}")
             self._artwork_editor_open = False
 
     def _finish_artwork_editor(self, dialog):
@@ -2890,6 +2954,35 @@ class HomeView(QWidget):
     def _apply_artwork_change(self, game_dict, kind, path):
         game_dict[f"{kind}_path"] = path
         _save_local_metadata(game_dict)
+        if kind == "icon" and desktop_entry_exists(game_dict):
+            try:
+                # Give the desktop environment time to observe removal before
+                # recreating the same launcher. Without this gap some menus
+                # retain the old icon from their desktop-entry cache.
+                remove_desktop_entry(game_dict)
+                self._desktop_refresh_generation += 1
+                generation = self._desktop_refresh_generation
+                self._desktop_refresh_pending = True
+                self._refresh_desktop_button(game_dict)
+
+                def recreate():
+                    if generation != self._desktop_refresh_generation:
+                        return
+                    try:
+                        create_desktop_entry(game_dict)
+                    except Exception as exc:
+                        print(f"[DESKTOP] icon refresh failed: {exc}")
+                    finally:
+                        self._desktop_refresh_pending = False
+                        self._refresh_desktop_button(game_dict)
+                        self.end_artwork_change_lock()
+
+                QTimer.singleShot(3000, recreate)
+            except Exception as exc:
+                print(f"[DESKTOP] icon refresh failed: {exc}")
+                self.end_artwork_change_lock()
+        elif kind == "icon":
+            self.end_artwork_change_lock()
         self.update_card_art(
             game_dict.get("key", ""),
             game_dict.get("cover_path"),
@@ -2903,11 +2996,59 @@ class HomeView(QWidget):
             )
             cover = QPixmap(game_dict.get("cover_path", "")) if game_dict.get("cover_path") else QPixmap()
             self._set_detail_cover(cover)
+            self._refresh_desktop_button(game_dict)
 
     def _launch_focused(self):
         game = self._detail_game if self.detail_overlay.isVisible() else self.focused_game
         if game and not (game.get("platform") == "PC" and not game_is_installed(game)):
+            sound_manager.play("play")
             self._launch_game(game)
+
+    def _add_focused_to_desktop(self):
+        game = self._detail_game if self.detail_overlay.isVisible() else self.focused_game
+        if game:
+            self._add_to_desktop(game)
+
+    def _refresh_desktop_button(self, game):
+        if not hasattr(self, "detail_desktop"):
+            return
+        if getattr(self, "_desktop_refresh_pending", False):
+            self.detail_desktop.setText("UPDATING ICON...")
+            self.detail_desktop.setToolTip("Updating the desktop launcher icon")
+            self.detail_desktop.setEnabled(False)
+            return
+        exists = bool(game and desktop_entry_exists(game))
+        self.detail_desktop.setText("REMOVE FROM DESKTOP" if exists else "ADD TO DESKTOP")
+        self.detail_desktop.setEnabled(True)
+        self.detail_desktop.setToolTip(
+            "Remove this game's desktop launcher" if exists
+            else "Create a desktop launcher using this game's selected icon"
+        )
+
+    def _add_to_desktop(self, game):
+        if getattr(self, "_desktop_refresh_pending", False):
+            return
+        if desktop_entry_exists(game):
+            removed = remove_desktop_entry(game)
+            self._refresh_desktop_button(game)
+            show_message(
+                self,
+                "Desktop Launcher",
+                "The desktop and application-menu launchers were removed." if removed
+                else "No desktop launcher was found.",
+            )
+            return
+        try:
+            entry = create_desktop_entry(game)
+        except Exception as exc:
+            show_message(self, "Desktop Launcher", f"Could not create the desktop launcher.\n\n{exc}")
+            return
+        show_message(
+            self,
+            "Desktop Launcher",
+            f"A direct launcher for {game.get('title', 'this game')} was added to the Desktop and application menu.\n\n{entry}",
+        )
+        self._refresh_desktop_button(game)
 
     def _install_focused(self):
         game = self._detail_game if self.detail_overlay.isVisible() else self.focused_game
@@ -2919,6 +3060,7 @@ class HomeView(QWidget):
 
     def _show_game_details(self, game_dict):
         """Select a game and open its detail state without launching it."""
+        sound_manager.play("modal_popup")
         self._detail_closing = False
         closing = getattr(self, "_detail_close_animation", None)
         if closing and closing.state() == QAbstractAnimation.Running:
@@ -2942,6 +3084,7 @@ class HomeView(QWidget):
         self.detail_favorite.setIcon(_modal_icon("heart-filled" if game_dict.get("is_favorite") else "heart"))
         self.detail_description.setText(game_dict.get("description", "No description is available yet."))
         self.detail_screenshots.setText(f"{len(game_dict.get('screenshots', []))} cached gameplay screenshot(s) available")
+        self._refresh_desktop_button(game_dict)
         unavailable = game_dict.get("platform") == "PC" and not game_is_installed(game_dict)
         self.detail_play.setEnabled(not unavailable)
         self.detail_play.setVisible(not unavailable)
@@ -2977,20 +3120,18 @@ class HomeView(QWidget):
             return
         target = Path(game.get("path", "")).expanduser()
         if not target.exists():
-            QMessageBox.information(self, "File Not Found", "The game files are already missing.")
+            show_message(self, "File Not Found", "The game files are already missing.")
             return
-        answer = QMessageBox.question(
+        if not confirm_message(
             self, "Remove Game Files",
             f"Permanently remove all contents for:\n\n{target}\n\nThis cannot be undone.",
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
-        )
-        if answer != QMessageBox.Yes:
+        ):
             return
         configured = config.library.get("libraries", {}).get(game.get("platform", ""), "")
         root = Path(configured).expanduser().resolve() if configured else None
         resolved = target.resolve()
         if root is None or (resolved != root and root not in resolved.parents):
-            QMessageBox.warning(self, "Blocked", "Only files inside the configured game library can be removed.")
+            show_message(self, "Blocked", "Only files inside the configured game library can be removed.")
             return
         try:
             if target.is_dir():
@@ -2998,7 +3139,7 @@ class HomeView(QWidget):
             else:
                 target.unlink()
         except OSError as exc:
-            QMessageBox.critical(self, "Remove Failed", str(exc))
+            show_message(self, "Remove Failed", str(exc))
             return
         self._close_game_details()
         self.library_changed.emit()

@@ -3,9 +3,11 @@ from PySide6.QtCore import Qt, Signal, QTimer, QThread, QPointF, QRect, QRectF
 from PySide6.QtGui import QPainter, QColor, QFont, QLinearGradient, QPixmap, QIcon
 import random
 
+_LOADING_ICON = None
+
 from core.scanner import scan_library
 from core.config import config
-from core.metadata import enrich_game
+from core.metadata import cached_game, enrich_game, save_metadata_cache
 from ui.sound_manager import sound_manager
 from ui.theme import get_theme_colors
 
@@ -44,15 +46,27 @@ class ScannerThread(QThread):
             for i, game in enumerate(games):
                 if self.isInterruptionRequested():
                     return
-                try:
-                    enriched.append(enrich_game(game))
-                except Exception as exc:
-                    print(f"[SCAN] Could not enrich {game.get('path', '')}: {exc}")
-                    enriched.append(dict(game))
+                # A rescan still enumerates library folders so additions and
+                # removals are detected, but existing entries are restored
+                # directly from the local cache.  Network enrichment only runs
+                # for a game that has not been seen before.
+                cached = cached_game(game)
+                if cached is not None:
+                    enriched.append(cached)
+                    phase = "USING CACHED GAMES..."
+                else:
+                    try:
+                        enriched.append(enrich_game(game))
+                    except Exception as exc:
+                        print(f"[SCAN] Could not enrich {game.get('path', '')}: {exc}")
+                        enriched.append(dict(game))
+                    phase = "ENRICHING NEW GAMES..."
                 self.progress.emit(
-                    f"ENRICHING METADATA... {i + 1}/{len(games)}",
+                    f"{phase} {i + 1}/{len(games)}",
                     45 + int(((i + 1) / total_games) * 54),
                 )
+
+            save_metadata_cache()
 
             self.progress.emit("DONE!", 100)
             self.scan_complete.emit(enriched)
@@ -176,8 +190,11 @@ class LoadingScreen(QWidget):
 
         # The icon is the only branding element; keeping text out of this
         # bounded area prevents vertical clipping at compact resolutions.
-        icon_path = config.project_root / "assets" / "icon.svg"
-        icon = QIcon(str(icon_path)) if icon_path.exists() else QIcon()
+        global _LOADING_ICON
+        if _LOADING_ICON is None:
+            icon_path = config.project_root / "assets" / "icon.svg"
+            _LOADING_ICON = QIcon(str(icon_path)) if icon_path.exists() else QIcon()
+        icon = _LOADING_ICON
         icon_rect = QRectF(cx - 56, cy - 154, 112, 112)
         if not icon.isNull():
             # Draw into a fixed square centered on the screen so the SVG can
